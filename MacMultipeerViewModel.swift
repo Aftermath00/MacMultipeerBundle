@@ -1,38 +1,25 @@
 import Foundation
-import Combine
 import MultipeerConnectivity
+import Combine
 
 class MacMultipeerConnectivityViewModel: ObservableObject {
-    @Published var receivedMessages: [String] = []
     @Published var connectedPeers: [MCPeerID] = []
     @Published var roomCode: String = ""
     @Published var isHosting = false
     @Published var isBrowsing = false
     @Published var elementAssignments: [String: String] = [:]
     @Published var readyPlayers: Set<String> = []
-    
-    // New properties for element-specific messages
-    @Published var fireReceivedMessages: [String] = []
-    @Published var windReceivedMessages: [String] = []
-    @Published var waterReceivedMessages: [String] = []
-    @Published var rockReceivedMessages: [String] = []
+    @Published var elementMessageQueues: [String: [String]] = [:]
     
     private let manager: MacMultipeerConnectivityManager
     private var cancellables: Set<AnyCancellable> = []
-    private var clearMessageTimer: Timer?
     
     init() {
         manager = MacMultipeerConnectivityManager()
         setupBindings()
-        startClearMessageTimer()
     }
     
     private func setupBindings() {
-        manager.$receivedMessages
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.receivedMessages, on: self)
-            .store(in: &cancellables)
-        
         manager.$connectedPeers
             .receive(on: DispatchQueue.main)
             .assign(to: \.connectedPeers, on: self)
@@ -57,44 +44,10 @@ class MacMultipeerConnectivityViewModel: ObservableObject {
             .assign(to: \.readyPlayers, on: self)
             .store(in: &cancellables)
         
-        manager.$fireReceivedMessages
+        manager.$elementMessageQueues
             .receive(on: DispatchQueue.main)
-            .assign(to: \.fireReceivedMessages, on: self)
+            .assign(to: \.elementMessageQueues, on: self)
             .store(in: &cancellables)
-        
-        manager.$windReceivedMessages
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.windReceivedMessages, on: self)
-            .store(in: &cancellables)
-        
-        manager.$waterReceivedMessages
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.waterReceivedMessages, on: self)
-            .store(in: &cancellables)
-        
-        manager.$rockReceivedMessages
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.rockReceivedMessages, on: self)
-            .store(in: &cancellables)
-    }
-    
-    deinit {
-        clearMessageTimer?.invalidate()
-    }
-    
-    private func startClearMessageTimer() {
-        clearMessageTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.clearElementMessages()
-        }
-    }
-    
-    private func clearElementMessages() {
-        DispatchQueue.main.async { [weak self] in
-            self?.fireReceivedMessages.removeAll()
-            self?.windReceivedMessages.removeAll()
-            self?.waterReceivedMessages.removeAll()
-            self?.rockReceivedMessages.removeAll()
-        }
     }
     
     func hostRoom() {
@@ -123,5 +76,18 @@ class MacMultipeerConnectivityViewModel: ObservableObject {
     
     func startGame() {
         manager.sendMessage("StartGame", to: manager.connectedPeers)
+    }
+    
+    func getNextElementMessage(_ element: String) -> String? {
+        if var messages = elementMessageQueues[element], !messages.isEmpty {
+            let message = messages.removeFirst()
+            elementMessageQueues[element] = messages
+            return message
+        }
+        return nil
+    }
+    
+    func clearElementMessages(_ element: String) {
+        elementMessageQueues[element]?.removeAll()
     }
 }

@@ -16,17 +16,14 @@ class MacMultipeerConnectivityManager: NSObject, ObservableObject {
     private var advertiser: MCNearbyServiceAdvertiser!
     private var browser: MCNearbyServiceBrowser!
     
-    @Published var receivedMessages: [String] = []
-    @Published var fireReceivedMessages: [String] = []
-    @Published var waterReceivedMessages: [String] = []
-    @Published var windReceivedMessages: [String] = []
-    @Published var rockReceivedMessages: [String] = []
-
     @Published var connectedPeers: [MCPeerID] = []
     @Published var roomCode: String = ""
     @Published var elementAssignments: [String: MCPeerID] = [:]
     @Published var readyPlayers: Set<MCPeerID> = []
-        
+    @Published var elementMessageQueues: [String: [String]] = [
+        "Fire": [], "Water": [], "Rock": [], "Wind": []
+    ]
+    
     let elements = ["Fire", "Water", "Rock", "Wind"]
     
     override init() {
@@ -58,18 +55,7 @@ class MacMultipeerConnectivityManager: NSObject, ObservableObject {
         roomCode = ""
         elementAssignments.removeAll()
         readyPlayers.removeAll()
-    }
-    
-    func updateConnectedPeers() {
-        DispatchQueue.main.async {
-            self.connectedPeers = self.session.connectedPeers
-            self.assignElementsToPeers()
-        }
-    }
-
-    private func generateRoomCode() -> String {
-        let letters = "123456789"
-        return String((0..<4).map{ _ in letters.randomElement()! })
+        elementMessageQueues = ["Fire": [], "Water": [], "Rock": [], "Wind": []]
     }
     
     func startBrowsing() {
@@ -89,9 +75,19 @@ class MacMultipeerConnectivityManager: NSObject, ObservableObject {
             } catch {
                 print("Error sending message: \(error.localizedDescription)")
             }
-        } else {
-            print("Error encoding message to data")
         }
+    }
+    
+    private func updateConnectedPeers() {
+        DispatchQueue.main.async {
+            self.connectedPeers = self.session.connectedPeers
+            self.assignElementsToPeers()
+        }
+    }
+
+    private func generateRoomCode() -> String {
+        let letters = "123456789"
+        return String((0..<4).map{ _ in letters.randomElement()! })
     }
     
     private func assignElementsToPeers() {
@@ -112,13 +108,36 @@ class MacMultipeerConnectivityManager: NSObject, ObservableObject {
             print("Debug: Assigned \(element) to \(peer.displayName)")
         }
     }
-
     
     private func handleReadyMessage(from peer: MCPeerID) {
         readyPlayers.insert(peer)
         if readyPlayers.count == connectedPeers.count {
-            // All players are ready, start the game
             sendMessage("StartGame", to: connectedPeers)
+        }
+    }
+    
+    private func processReceivedMessage(_ message: String, fromPeer peerID: MCPeerID) {
+        let trimmedMessage = message.replacingOccurrences(of: "Unassigned: ", with: "")
+        print("Debug: Received message: \(trimmedMessage)")
+        
+        let parts = trimmedMessage.split(separator: ":")
+        if parts.count == 3 {
+            let element = String(parts[0])
+            let action = String(parts[1])
+            let confirmElement = String(parts[2])
+            
+            if element == confirmElement {
+                DispatchQueue.main.async {
+                    self.elementMessageQueues[element, default: []].append(trimmedMessage)
+                }
+                print("Debug: Added message for \(element): \(trimmedMessage)")
+            } else {
+                print("Debug: Element mismatch in message: \(trimmedMessage)")
+            }
+        } else if trimmedMessage == "Ready" {
+            self.handleReadyMessage(from: peerID)
+        } else {
+            print("Debug: Received unrecognized message format: \(trimmedMessage)")
         }
     }
 }
@@ -126,21 +145,17 @@ class MacMultipeerConnectivityManager: NSObject, ObservableObject {
 extension MacMultipeerConnectivityManager: MCSessionDelegate {
     func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
         DispatchQueue.main.async {
-            print("Debug: Peer \(peerID.displayName) changed state to: \(state.rawValue)")
             switch state {
             case .connected:
                 if !self.connectedPeers.contains(peerID) {
                     self.connectedPeers.append(peerID)
-                    print("Debug: Peer connected: \(peerID.displayName)")
-                    self.assignElementsToPeers() // Only assign elements for new connections
+                    self.assignElementsToPeers()
                 }
             case .notConnected:
                 if let index = self.connectedPeers.firstIndex(of: peerID) {
                     self.connectedPeers.remove(at: index)
                 }
-                print("Debug: Peer disconnected: \(peerID.displayName)")
                 self.readyPlayers.remove(peerID)
-                // Remove the assignment for the disconnected peer
                 if let (element, _) = self.elementAssignments.first(where: { $0.value == peerID }) {
                     self.elementAssignments.removeValue(forKey: element)
                 }
@@ -159,74 +174,32 @@ extension MacMultipeerConnectivityManager: MCSessionDelegate {
         }
     }
     
-    private func processReceivedMessage(_ message: String, fromPeer peerID: MCPeerID) {
-        let trimmedMessage = message.replacingOccurrences(of: "Unassigned: ", with: "")
-        print("Debug: Received message: \(trimmedMessage)")
-        receivedMessages.append(trimmedMessage)
-        
-        let parts = trimmedMessage.split(separator: ":")
-        if parts.count == 3 {
-            let element = String(parts[0])
-            let action = String(parts[1])
-            let confirmElement = String(parts[2])
-            
-            if element == confirmElement {
-                switch element {
-                case "Fire":
-                    fireReceivedMessages.append(trimmedMessage)
-                case "Wind":
-                    windReceivedMessages.append(trimmedMessage)
-                case "Water":
-                    waterReceivedMessages.append(trimmedMessage)
-                case "Rock":
-                    rockReceivedMessages.append(trimmedMessage)
-                default:
-                    print("Debug: Unknown element: \(element)")
-                }
-            } else {
-                print("Debug: Element mismatch in message: \(trimmedMessage)")
-            }
-        } else if trimmedMessage == "Ready" {
-            self.handleReadyMessage(from: peerID)
-        } else {
-            print("Debug: Received unrecognized message format: \(trimmedMessage)")
-        }
-    }
-    
     func session(_ session: MCSession, didReceive stream: InputStream, withName streamName: String, fromPeer peerID: MCPeerID) {}
-    
     func session(_ session: MCSession, didStartReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, with progress: Progress) {}
-    
     func session(_ session: MCSession, didFinishReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, at localURL: URL?, withError error: Error?) {}
 }
 
 extension MacMultipeerConnectivityManager: MCNearbyServiceAdvertiserDelegate {
     func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didReceiveInvitationFromPeer peerID: MCPeerID, withContext context: Data?, invitationHandler: @escaping (Bool, MCSession?) -> Void) {
-        print("Debug: Received invitation from peer: \(peerID.displayName)")
         invitationHandler(true, session)
     }
     
     func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didNotStartAdvertisingPeer error: Error) {
-        print("Debug: Failed to start advertising: \(error.localizedDescription)")
+        print("Failed to start advertising: \(error.localizedDescription)")
     }
 }
 
 extension MacMultipeerConnectivityManager: MCNearbyServiceBrowserDelegate {
     func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String : String]?) {
-        print("Debug: Found peer: \(peerID.displayName), info: \(String(describing: info))")
         guard let peerRoomCode = info?["roomCode"], peerRoomCode == roomCode else {
-            print("Debug: Peer room code doesn't match. Ignoring.")
             return
         }
-        print("Debug: Inviting peer to join session")
         browser.invitePeer(peerID, to: session, withContext: nil, timeout: 10)
     }
     
-    func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {
-        print("Debug: Lost peer: \(peerID.displayName)")
-    }
+    func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {}
     
     func browser(_ browser: MCNearbyServiceBrowser, didNotStartBrowsingForPeers error: Error) {
-        print("Debug: Failed to start browsing: \(error.localizedDescription)")
+        print("Failed to start browsing: \(error.localizedDescription)")
     }
 }

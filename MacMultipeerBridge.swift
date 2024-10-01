@@ -4,7 +4,6 @@
 //
 //  Created by Rizky Azmi Swandy on 27/09/24.
 //
-
 import Foundation
 
 @objc(MacMultipeerConnectivityBridge)
@@ -35,10 +34,6 @@ public class MacMultipeerConnectivityBridge: NSObject {
     
     @objc public func sendMessageNative(_ message: String) {
         viewModel.sendMessage(message)
-    }
-    
-    @objc public func getReceivedMessagesNative() -> [String] {
-        return viewModel.receivedMessages
     }
     
     @objc public func getConnectedPeersCountNative() -> Int {
@@ -73,20 +68,12 @@ public class MacMultipeerConnectivityBridge: NSObject {
         viewModel.startGame()
     }
     
-    @objc public func getFireReceivedMessagesNative() -> [String] {
-        return viewModel.fireReceivedMessages
+    @objc public func getNextElementMessageNative(_ element: String) -> String? {
+        return viewModel.getNextElementMessage(element)
     }
     
-    @objc public func getWindReceivedMessagesNative() -> [String] {
-        return viewModel.windReceivedMessages
-    }
-    
-    @objc public func getWaterReceivedMessagesNative() -> [String] {
-        return viewModel.waterReceivedMessages
-    }
-    
-    @objc public func getRockReceivedMessagesNative() -> [String] {
-        return viewModel.rockReceivedMessages
+    @objc public func clearElementMessagesNative(_ element: String) {
+        viewModel.clearElementMessages(element)
     }
 }
 
@@ -111,29 +98,10 @@ public func StartBrowsingNative() {
     MacMultipeerConnectivityBridge.shared.startBrowsingNative()
 }
 
-@_cdecl("StopBrowsingNative")
-public func StopBrowsingNative() {
-    MacMultipeerConnectivityBridge.shared.stopBrowsingNative()
-}
-
 @_cdecl("SendMessageNative")
 public func SendMessageNative(_ message: UnsafePointer<CChar>) {
     let swiftMessage = String(cString: message)
     MacMultipeerConnectivityBridge.shared.sendMessageNative(swiftMessage)
-}
-
-@_cdecl("GetReceivedMessagesNative")
-public func GetReceivedMessagesNative() -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
-    let messages = MacMultipeerConnectivityBridge.shared.getReceivedMessagesNative()
-    let count = messages.count
-    let arrayPtr = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity: count + 1)
-    
-    for (index, message) in messages.enumerated() {
-        arrayPtr[index] = strdup(message)
-    }
-    arrayPtr[count] = nil  // Null-terminate the array
-    
-    return arrayPtr
 }
 
 @_cdecl("GetConnectedPeersCountNative")
@@ -144,17 +112,8 @@ public func GetConnectedPeersCountNative() -> Int32 {
 @_cdecl("GetConnectedPeersNative")
 public func GetConnectedPeersNative() -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
     let peers = MacMultipeerConnectivityBridge.shared.getConnectedPeersNative()
-    let count = peers.count
-    let arrayPtr = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity: count + 1)
-    
-    for (index, peer) in peers.enumerated() {
-        arrayPtr[index] = strdup(peer)
-    }
-    arrayPtr[count] = nil  // Null-terminate the array
-    
-    return arrayPtr
+    return createStringArray(from: peers)
 }
-
 
 @_cdecl("GetRoomCodeNative")
 public func GetRoomCodeNative() -> UnsafeMutablePointer<CChar>? {
@@ -193,56 +152,27 @@ public func GetElementAssignmentsNative() -> UnsafeMutablePointer<UnsafeMutableP
 @_cdecl("GetReadyPlayersNative")
 public func GetReadyPlayersNative() -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
     let players = MacMultipeerConnectivityBridge.shared.getReadyPlayersNative()
-    let count = players.count
-    let arrayPtr = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity: count + 1)
-    
-    for (index, player) in players.enumerated() {
-        arrayPtr[index] = strdup(player)
-    }
-    arrayPtr[count] = nil  // Null-terminate the array
-    
-    return arrayPtr
-}
-
-@_cdecl("GetFireReceivedMessagesNative")
-public func GetFireReceivedMessagesNative() -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
-    let messages = MacMultipeerConnectivityBridge.shared.getFireReceivedMessagesNative()
-    return createStringArray(from: messages)
-}
-
-@_cdecl("GetWindReceivedMessagesNative")
-public func GetWindReceivedMessagesNative() -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
-    let messages = MacMultipeerConnectivityBridge.shared.getWindReceivedMessagesNative()
-    return createStringArray(from: messages)
-}
-
-@_cdecl("GetWaterReceivedMessagesNative")
-public func GetWaterReceivedMessagesNative() -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
-    let messages = MacMultipeerConnectivityBridge.shared.getWaterReceivedMessagesNative()
-    return createStringArray(from: messages)
-}
-
-@_cdecl("GetRockReceivedMessagesNative")
-public func GetRockReceivedMessagesNative() -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
-    let messages = MacMultipeerConnectivityBridge.shared.getRockReceivedMessagesNative()
-    return createStringArray(from: messages)
-}
-
-private func createStringArray(from messages: [String]) -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
-    let count = messages.count
-    let arrayPtr = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity: count + 1)
-    
-    for (index, message) in messages.enumerated() {
-        arrayPtr[index] = strdup(message)
-    }
-    arrayPtr[count] = nil  // Null-terminate the array
-    
-    return arrayPtr
+    return createStringArray(from: players)
 }
 
 @_cdecl("StartGameNative")
 public func StartGameNative() {
     MacMultipeerConnectivityBridge.shared.startGameNative()
+}
+
+@_cdecl("GetNextElementMessageNative")
+public func GetNextElementMessageNative(_ element: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>? {
+    let swiftElement = String(cString: element)
+    if let message = MacMultipeerConnectivityBridge.shared.getNextElementMessageNative(swiftElement) {
+        return strdup(message)
+    }
+    return nil
+}
+
+@_cdecl("ClearElementMessagesNative")
+public func ClearElementMessagesNative(_ element: UnsafePointer<CChar>) {
+    let swiftElement = String(cString: element)
+    MacMultipeerConnectivityBridge.shared.clearElementMessagesNative(swiftElement)
 }
 
 @_cdecl("FreeStringNative")
@@ -260,4 +190,16 @@ public func FreeStringArrayNative(_ array: UnsafeMutablePointer<UnsafeMutablePoi
         ptr += 1
     }
     array.deallocate()
+}
+
+private func createStringArray(from strings: [String]) -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
+    let count = strings.count
+    let arrayPtr = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity: count + 1)
+    
+    for (index, string) in strings.enumerated() {
+        arrayPtr[index] = strdup(string)
+    }
+    arrayPtr[count] = nil  // Null-terminate the array
+    
+    return arrayPtr
 }
