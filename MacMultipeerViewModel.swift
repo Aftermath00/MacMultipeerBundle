@@ -1,55 +1,55 @@
 import Foundation
-import MultipeerConnectivity
 import Combine
+import MultipeerConnectivity
 
-class MacMultipeerConnectivityViewModel: ObservableObject {
-    @Published var connectedPeers: [MCPeerID] = []
-    @Published var roomCode: String = ""
-    @Published var isHosting = false
-    @Published var isBrowsing = false
-    @Published var elementAssignments: [String: String] = [:]
-    @Published var readyPlayers: Set<String> = []
-    @Published var elementMessageQueues: [String: [String]] = [:]
-    
+class MacMultipeerViewModel: ObservableObject {
     private let manager: MacMultipeerConnectivityManager
     private var cancellables: Set<AnyCancellable> = []
-    
+
+    @Published var connectedPeers: [String] = []
+    @Published var receivedMessages: [String] = []
+    @Published var elementAssignments: [String: String] = [:]
+    @Published var elementMessages: [String: [String]] = [
+        "Fire": [],
+        "Water": [],
+        "Rock": [],
+        "Wind": []
+    ]
+    @Published var roomCode: String = ""
+    @Published var isHosting: Bool = false
+    @Published var isBrowsing = false
+
     init() {
         manager = MacMultipeerConnectivityManager()
         setupBindings()
     }
-    
+
     private func setupBindings() {
         manager.$connectedPeers
             .receive(on: DispatchQueue.main)
-            .assign(to: \.connectedPeers, on: self)
-            .store(in: &cancellables)
-        
+            .map { peers in peers.map { $0.displayName } }
+            .assign(to: &$connectedPeers)
+
         manager.$roomCode
             .receive(on: DispatchQueue.main)
             .assign(to: \.roomCode, on: self)
             .store(in: &cancellables)
         
+        manager.$receivedMessages
+            .assign(to: &$receivedMessages)
+        
         manager.$elementAssignments
-            .receive(on: DispatchQueue.main)
-            .map { dict in
-                dict.mapValues { $0.displayName }
+            .map { assignments in
+                Dictionary(uniqueKeysWithValues: assignments.map { (key, value) in
+                    (key.displayName, value)
+                })
             }
-            .assign(to: \.elementAssignments, on: self)
-            .store(in: &cancellables)
+            .assign(to: &$elementAssignments)
         
-        manager.$readyPlayers
-            .receive(on: DispatchQueue.main)
-            .map { Set($0.map { $0.displayName }) }
-            .assign(to: \.readyPlayers, on: self)
-            .store(in: &cancellables)
-        
-        manager.$elementMessageQueues
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.elementMessageQueues, on: self)
-            .store(in: &cancellables)
+        manager.$elementMessages
+            .assign(to: &$elementMessages)
     }
-    
+
     func hostRoom() {
         manager.hostRoom()
         isHosting = true
@@ -71,23 +71,14 @@ class MacMultipeerConnectivityViewModel: ObservableObject {
     }
     
     func sendMessage(_ message: String) {
-        manager.sendMessage(message, to: manager.connectedPeers)
+        manager.sendMessage(message)
     }
     
     func startGame() {
         manager.sendMessage("StartGame", to: manager.connectedPeers)
     }
     
-    func getNextElementMessage(_ element: String) -> String? {
-        if var messages = elementMessageQueues[element], !messages.isEmpty {
-            let message = messages.removeFirst()
-            elementMessageQueues[element] = messages
-            return message
-        }
-        return nil
-    }
-    
     func clearElementMessages(_ element: String) {
-        elementMessageQueues[element]?.removeAll()
+        manager.clearElementMessages(element)
     }
 }
